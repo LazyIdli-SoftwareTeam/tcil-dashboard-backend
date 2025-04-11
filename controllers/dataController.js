@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-// Existing controller: Get all collection names
 const getCollections = async (req, res) => {
   try {
     const collections = await mongoose.connection.db
@@ -12,7 +11,6 @@ const getCollections = async (req, res) => {
   }
 };
 
-// Existing controller: Get data from one collection
 const getDataByCollection = async (req, res) => {
   const { collection, filter } = req.query;
   if (!collection)

@@ -34,9 +34,22 @@ const groupMap = {
 
 const getAggregatedData = async (req, res) => {
   try {
+    const { startTime, endTime } = req.query;
+
+    const startMinutes =
+      startTime && startTime.includes(":")
+        ? parseInt(startTime.split(":")[0]) * 60 +
+          parseInt(startTime.split(":")[1])
+        : null;
+    const endMinutes =
+      endTime && endTime.includes(":")
+        ? parseInt(endTime.split(":")[0]) * 60 + parseInt(endTime.split(":")[1])
+        : null;
+
     const collections = await mongoose.connection.db
       .listCollections()
       .toArray();
+
     const allData = {};
 
     for (const { name: collectionName } of collections) {
@@ -53,40 +66,85 @@ const getAggregatedData = async (req, res) => {
         let start = startKey ? doc[startKey] : null;
         let end = endKey ? doc[endKey] : null;
 
-        // Fallback: If start is missing but end exists, use end as start
         if (typeof start !== "number" && typeof end === "number") {
           start = end;
         }
 
         if (typeof start !== "number" || typeof end !== "number") continue;
 
-        const group = groupMap[collectionName] || "Others";
+        // Time-only filtering based on IST
+        const istStart = new Date(start).toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+        });
+        const [istHrs, istMins] = new Date(istStart)
+          .toTimeString()
+          .split(":")
+          .map(Number);
+        const totalStartMinutes = istHrs * 60 + istMins;
 
-        if (!allData[lr]) {
-          allData[lr] = [];
+        if (
+          startMinutes !== null &&
+          endMinutes !== null &&
+          (totalStartMinutes < startMinutes || totalStartMinutes > endMinutes)
+        ) {
+          continue;
         }
 
-        allData[lr].push({
-          collection: collectionName,
-          group,
-          start,
-          end,
-          start_ist: new Date(start).toLocaleString("en-IN", {
-            timeZone: "Asia/Kolkata",
-          }),
-          end_ist: new Date(end).toLocaleString("en-IN", {
-            timeZone: "Asia/Kolkata",
-          }),
-          duration_minutes: ((end - start) / (1000 * 60)).toFixed(2),
+        const group = groupMap[collectionName] || "Others";
+
+        const start_ist = new Date(start).toLocaleTimeString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
         });
+
+        const end_ist = new Date(end).toLocaleTimeString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+
+        if (!allData[lr]) {
+          allData[lr] = {};
+        }
+
+        if (!allData[lr][group]) {
+          allData[lr][group] = [];
+        }
+
+        allData[lr][group].push({ start_ist, end_ist });
       }
     }
 
-    for (const lr in allData) {
-      allData[lr].sort((a, b) => a.start - b.start);
-    }
+    // Final formatting
+    const finalResult = Object.entries(allData).map(([lr, groups]) => {
+      let total_duration = 0;
+      const formattedGroups = {};
 
-    res.json(allData);
+      for (const [group, times] of Object.entries(groups)) {
+        formattedGroups[group] = times.map((t) => {
+          // calculate duration for total only
+          const [sH, sM] = t.start_ist.split(":").map(Number);
+          const [eH, eM] = t.end_ist.split(":").map(Number);
+          const duration = eH * 60 + eM - (sH * 60 + sM);
+          total_duration += duration;
+          return t;
+        });
+      }
+
+      return {
+        lr_number: lr,
+        ...formattedGroups,
+        total_duration,
+      };
+    });
+
+    // Sort by LR number
+    finalResult.sort((a, b) => a.lr_number.localeCompare(b.lr_number));
+
+    res.json(finalResult);
   } catch (error) {
     console.error("Aggregation Error:", error);
     res.status(500).json({ error: error.message });

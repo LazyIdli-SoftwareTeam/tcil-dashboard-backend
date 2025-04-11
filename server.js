@@ -24,7 +24,6 @@ mongoose
       collections.map((c) => c.name)
     );
 
-    // Start server AFTER DB connects
     app.listen(process.env.PORT, () => {
       console.log(`Server running on port ${process.env.PORT}`);
     });

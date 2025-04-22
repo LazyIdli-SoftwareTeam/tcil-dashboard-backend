@@ -34,7 +34,7 @@ const groupMap = {
 
 const getAggregatedData = async (req, res) => {
   try {
-    const { startTime, endTime } = req.query;
+    const { startTime, endTime, ...doc } = req.query;
 
     const startMinutes =
       startTime && startTime.includes(":")
@@ -60,6 +60,10 @@ const getAggregatedData = async (req, res) => {
         const lr = doc.lr_number || doc.lrNumber;
         if (!lr) continue;
 
+        let createdAt = doc.createdAt || null;
+
+        // Removed logging for createdAt
+
         const startKey = possibleStartKeys.find((key) => doc[key]);
         const endKey = possibleEndKeys.find((key) => doc[key]);
 
@@ -72,7 +76,6 @@ const getAggregatedData = async (req, res) => {
 
         if (typeof start !== "number" || typeof end !== "number") continue;
 
-        // Time-only filtering based on IST
         const istStart = new Date(start).toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata",
         });
@@ -114,7 +117,15 @@ const getAggregatedData = async (req, res) => {
           allData[lr][group] = [];
         }
 
-        allData[lr][group].push({ start_ist, end_ist });
+        // Send raw createdAt if from 'lr_collection'
+        const extraFields =
+          collectionName === "lr_collection" && createdAt
+            ? {
+                createdAt, // ← raw value passed here
+              }
+            : {};
+
+        allData[lr][group].push({ start_ist, end_ist, ...extraFields, ...doc });
       }
     }
 
@@ -125,7 +136,6 @@ const getAggregatedData = async (req, res) => {
 
       for (const [group, times] of Object.entries(groups)) {
         formattedGroups[group] = times.map((t) => {
-          // calculate duration for total only
           const [sH, sM] = t.start_ist.split(":").map(Number);
           const [eH, eM] = t.end_ist.split(":").map(Number);
           const duration = eH * 60 + eM - (sH * 60 + sM);
@@ -141,7 +151,6 @@ const getAggregatedData = async (req, res) => {
       };
     });
 
-    // Sort by LR number
     finalResult.sort((a, b) => a.lr_number.localeCompare(b.lr_number));
 
     res.json(finalResult);

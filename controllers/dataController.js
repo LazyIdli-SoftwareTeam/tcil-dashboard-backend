@@ -17,13 +17,6 @@ const getDataByCollection = async (req, res) => {
   if (!collection)
     return res.status(400).json({ error: "Collection required" });
 
-  // Only proceed if the collection is "lr_collection"
-  if (collection !== "lr_collection") {
-    return res.status(400).json({
-      error: "Invalid collection. Only 'lr_collection' is supported.",
-    });
-  }
-
   try {
     const col = mongoose.connection.db.collection(collection);
     const documents = await col.find({}).toArray();

@@ -21,32 +21,44 @@ const getDataByCollection = async (req, res) => {
     const col = mongoose.connection.db.collection(collection);
     const documents = await col.find({}).toArray();
 
-    // Get current date values
+    // Current date
     const now = new Date();
     const startOfDay = new Date(now.setHours(0, 0, 0, 0)).getTime();
-    const startOfWeek = new Date(
-      now.setDate(now.getDate() - now.getDay())
-    ).getTime();
-    const startOfMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1
-    ).getTime();
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay())).getTime();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-    // Filter based on the selected period: day, week, or month
-    const filterStart =
-      {
-        day: startOfDay,
-        week: startOfWeek,
-        month: startOfMonth,
-      }[filter] || 0;
+    // Start of previous month
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+    const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+
+    // Select filter start (and end if needed)
+    let filterStart = 0;
+    let filterEnd = Date.now();
+
+    switch (filter) {
+      case "day":
+        filterStart = startOfDay;
+        break;
+      case "week":
+        filterStart = startOfWeek;
+        break;
+      case "month":
+        filterStart = startOfMonth;
+        break;
+      case "prevMonth":
+        filterStart = startOfPrevMonth;
+        filterEnd = endOfPrevMonth;
+        break;
+      default:
+        filterStart = 0;
+    }
 
     const possibleStartKeys = [
       "start_time",
       "count_start_time",
       "cc_count_start",
       "start_count_time",
-      "createdAt", // We're using createdAt field as the start time
+      "createdAt",
     ];
 
     const possibleEndKeys = [
@@ -58,22 +70,20 @@ const getDataByCollection = async (req, res) => {
       "updatedAt",
     ];
 
-    // Process the documents to calculate the durations
     const data = documents
       .map((doc) => {
         let startKey = possibleStartKeys.find((key) => doc[key]);
         let endKey = possibleEndKeys.find((key) => doc[key]);
 
-        if (!startKey && endKey) startKey = endKey; // If no start, use end as start
-        if (!startKey || !endKey) return null; // If no valid start or end, skip the document
+        if (!startKey && endKey) startKey = endKey;
+        if (!startKey || !endKey) return null;
 
         const start = doc[startKey];
         const end = doc[endKey];
 
-        if (typeof start !== "number" || typeof end !== "number") return null; // Invalid time values
+        if (typeof start !== "number" || typeof end !== "number") return null;
 
-        // Apply filter to only include records from the selected time range
-        if (start < filterStart) return null; // If the start time is before the filter, skip it
+        if (start < filterStart || start > filterEnd) return null;
 
         const durationMinutes = (end - start) / (1000 * 60);
 
@@ -89,9 +99,9 @@ const getDataByCollection = async (req, res) => {
           duration_hours: (durationMinutes / 60).toFixed(2),
         };
       })
-      .filter((d) => d !== null); // Remove null entries
+      .filter((d) => d !== null);
 
-    res.json(data); // Send the processed data
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
